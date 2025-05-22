@@ -29,14 +29,14 @@ def analisar_acao(ticker):
         soup = BeautifulSoup(html, 'html.parser')
 
         def get_valor(label):
-    tag = soup.find("td", string=lambda t: t and label in t)
-    if tag:
-        valor = tag.find_next_sibling("td").text.strip().replace('%', '').replace('.', '').replace(',', '.')
-        try:
-            return float(valor)
-        except:
+            tag = soup.find("td", string=lambda t: t and label in t)
+            if tag:
+                valor = tag.find_next_sibling("td").text.strip().replace('%', '').replace('.', '').replace(',', '.')
+                try:
+                    return float(valor)
+                except:
+                    return None
             return None
-    return None
 
         roe = get_valor("ROE")
         roic = get_valor("ROIC")
@@ -82,6 +82,5 @@ def analisar_acao(ticker):
         return jsonify({"erro": str(e)}), 500
 
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
