@@ -29,14 +29,14 @@ def analisar_acao(ticker):
         soup = BeautifulSoup(html, 'html.parser')
 
         def get_valor(label):
-            tag = soup.find("td", string=label)
-            if tag:
-                valor = tag.find_next_sibling("td").text.strip().replace('%', '').replace('.', '').replace(',', '.')
-                try:
-                    return float(valor)
-                except:
-                    return None
+    tag = soup.find("td", string=lambda t: t and label in t)
+    if tag:
+        valor = tag.find_next_sibling("td").text.strip().replace('%', '').replace('.', '').replace(',', '.')
+        try:
+            return float(valor)
+        except:
             return None
+    return None
 
         roe = get_valor("ROE")
         roic = get_valor("ROIC")
