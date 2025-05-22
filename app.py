@@ -29,17 +29,17 @@ def analisar_acao(ticker):
         soup = BeautifulSoup(html, 'html.parser')
 
         def get_valor(label):
-        for td in soup.find_all("td"):
-        texto = td.get_text(strip=True)
-        if label.lower() in texto.lower():
-            valor_td = td.find_next_sibling("td")
-            if valor_td:
-                valor = valor_td.text.strip().replace('%', '').replace('.', '').replace(',', '.')
-                try:
-                    return float(valor)
-                except:
-                    return None
-         return None
+            for td in soup.find_all("td"):
+                texto = td.get_text(strip=True)
+                if label.lower() in texto.lower():
+                    valor_td = td.find_next_sibling("td")
+                    if valor_td:
+                        valor = valor_td.text.strip().replace('%', '').replace('.', '').replace(',', '.')
+                        try:
+                            return float(valor)
+                        except:
+                            return None
+        return None
 
         pl = get_valor("P/L")
         dy = get_valor("Div. Yield")
