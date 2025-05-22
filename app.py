@@ -25,7 +25,7 @@ def analisar_acao(ticker):
 
         # Scraping do Fundamentus
         fundamentus_url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
-        html = requests.get(fundamentus_url, headers={"User-Agent": "Mozilla/5.0"}).text
+        html = requests.get(fundamentus_url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
         def get_valor(label):
