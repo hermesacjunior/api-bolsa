@@ -28,8 +28,8 @@ def analisar_acao(ticker):
         html = requests.get(fundamentus_url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
-        ef get_valor(label):
-    for td in soup.find_all("td"):
+        def get_valor(label):
+        for td in soup.find_all("td"):
         texto = td.get_text(strip=True)
         if label.lower() in texto.lower():
             valor_td = td.find_next_sibling("td")
@@ -39,14 +39,16 @@ def analisar_acao(ticker):
                     return float(valor)
                 except:
                     return None
-    return None
+         return None
 
+        pl = get_valor("P/L")
+        dy = get_valor("Div. Yield")
         roe = get_valor("ROE")
         roic = get_valor("ROIC")
         ev_ebitda = get_valor("EV / EBITDA")
-        margem_liquida = get_valor("Margem líquida")
-        divida_patrimonio = get_valor("Dív. Líquida / Patrimônio Líquido")
-        crescimento = get_valor("Crescimento receita líquida 5 anos")
+        margem_liquida = get_valor("Marg. Líquida")
+        divida_patrimonio = get_valor("Div Br/ Patrim")
+        crescimento = get_valor("Cres. Rec (5a)")
 
         pontos = 0
         if pl and pl < 15: pontos += 1
@@ -70,9 +72,9 @@ def analisar_acao(ticker):
             "empresa": empresa,
             "preco": preco,
             "P/L": pl,
+            "Dividend Yield": dy,
             "ROE": roe,
             "ROIC": roic,
-            "Dividend Yield": dy,
             "EV/EBITDA": ev_ebitda,
             "Margem Líquida": margem_liquida,
             "Dívida/Patrimônio": divida_patrimonio,
