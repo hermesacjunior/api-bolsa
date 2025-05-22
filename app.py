@@ -28,15 +28,18 @@ def analisar_acao(ticker):
         html = requests.get(fundamentus_url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
-        def get_valor(label):
-            tag = soup.find("td", string=lambda t: t and label in t)
-            if tag:
-                valor = tag.find_next_sibling("td").text.strip().replace('%', '').replace('.', '').replace(',', '.')
+        ef get_valor(label):
+    for td in soup.find_all("td"):
+        texto = td.get_text(strip=True)
+        if label.lower() in texto.lower():
+            valor_td = td.find_next_sibling("td")
+            if valor_td:
+                valor = valor_td.text.strip().replace('%', '').replace('.', '').replace(',', '.')
                 try:
                     return float(valor)
                 except:
                     return None
-            return None
+    return None
 
         roe = get_valor("ROE")
         roic = get_valor("ROIC")
