@@ -39,8 +39,9 @@ def analisar_acao(ticker):
                             return float(valor)
                         except:
                             return None
-        return None
+            return None  # <- agora está corretamente DENTRO da função
 
+        # Buscar os dados do Fundamentus
         pl = get_valor("P/L")
         dy = get_valor("Div. Yield")
         roe = get_valor("ROE")
@@ -50,6 +51,7 @@ def analisar_acao(ticker):
         divida_patrimonio = get_valor("Div Br/ Patrim")
         crescimento = get_valor("Cres. Rec (5a)")
 
+        # Lógica de pontuação
         pontos = 0
         if pl and pl < 15: pontos += 1
         if dy and dy > 5: pontos += 1
