@@ -84,7 +84,9 @@ def analisar_acao(ticker):
         })
 
     except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+        import traceback
+        erro = traceback.format_exc()
+        return jsonify({"erro": str(e), "detalhes": erro}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
