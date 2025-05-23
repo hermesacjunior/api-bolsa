@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+rom flask import Flask, jsonify
 import requests
 import os
 
@@ -11,23 +11,27 @@ def home():
 @app.route('/analise/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
     token = os.getenv("BRAPI_TOKEN")
-    brapi_url = f"https://brapi.dev/api/quote/{ticker}?modules=summaryProfile,financialData&token={token}"
+    brapi_url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
 
     try:
-        # Consome a API da Brapi
         response = requests.get(brapi_url)
-        data = response.json()['results'][0]
+        data = response.json()
 
-        # Indicadores disponíveis
-        preco = data.get('regularMarketPrice')
-        empresa = data.get('longName')
-        setor = data.get('sector') or 'N/A'
-        valor_mercado = data.get('marketCap')
-        pl = data.get('priceEarningsRatio')
-        dy = data.get('dividendYield')
-        roe = data.get('returnOnEquity')
-        roic = data.get('returnOnInvestedCapital')
-        crescimento = data.get('earningsGrowth') or data.get('revenueGrowth')
+        # Verificação de erro
+        if "results" not in data or not data["results"]:
+            return jsonify({"erro": "Ticker inválido ou resposta sem resultados."}), 400
+
+        info = data["results"][0]
+
+        preco = info.get('regularMarketPrice')
+        empresa = info.get('longName')
+        setor = info.get('sector') or 'N/A'
+        valor_mercado = info.get('marketCap')
+        pl = info.get('priceEarningsRatio')
+        dy = info.get('dividendYield')
+        roe = info.get('returnOnEquity')
+        roic = info.get('returnOnInvestedCapital')
+        crescimento = info.get('revenueGrowth') or info.get('earningsGrowth')
 
         # Indicadores macroeconômicos fixos
         ipca = 4.2
