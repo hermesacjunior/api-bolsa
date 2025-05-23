@@ -36,19 +36,25 @@ def analisar_acao(ticker):
             texto = texto.encode('ascii', 'ignore').decode('ascii')
             return texto.strip().lower()
 
+        # Função com log detalhado
         def get_valor(label):
             alvo = limpar_texto(label)
+            print(f"\n🔎 Procurando: {label} (normalizado: '{alvo}')")
             for tr in soup.find_all("tr"):
                 tds = tr.find_all("td")
                 if len(tds) >= 2:
-                    titulo = limpar_texto(tds[0].get_text(strip=True))
+                    titulo_original = tds[0].get_text(strip=True)
+                    titulo_limpo = limpar_texto(titulo_original)
                     valor = tds[1].get_text(strip=True)
-                    if alvo in titulo:
+                    print(f"Título: '{titulo_original}' → '{titulo_limpo}' | Valor: '{valor}'")
+                    if alvo in titulo_limpo:
                         numero = re.sub(r'[^\d,.-]', '', valor).replace('.', '').replace(',', '.')
                         try:
                             return float(numero)
                         except:
+                            print(f"❌ Erro ao converter '{valor}'")
                             return None
+            print(f"⚠️ Não encontrado: {label}")
             return None
 
         # Indicadores Fundamentus
@@ -57,7 +63,7 @@ def analisar_acao(ticker):
         roe = get_valor("ROE")
         roic = get_valor("ROIC")
         ev_ebitda = get_valor("EV / EBITDA")
-        margem_liquida = get_valor("Marg. Líquida")
+        margem_liquida = get_valor("Margem Líquida")
         divida_patrimonio = get_valor("Div Br/ Patrim")
         crescimento = get_valor("Cres. Rec (5a)")
 
