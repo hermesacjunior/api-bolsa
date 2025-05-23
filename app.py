@@ -11,41 +11,39 @@ def home():
 @app.route('/analise/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
     token = os.getenv("BRAPI_TOKEN")
-    if not token:
-        return jsonify({"erro": "Token BRAPI não encontrado."}), 500
-
-    url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
+    url = f"https://brapi.dev/api/fundamentals/{ticker}?token={token}"
 
     try:
         response = requests.get(url)
         data = response.json()
 
         if "results" not in data or not data["results"]:
-            return jsonify({"erro": "Ticker não encontrado."}), 400
+            return jsonify({"erro": "Ticker não encontrado ou sem dados."}), 400
 
-        info = data["results"][0]
+        info = data["results"]
 
-        preco = info.get("regularMarketPrice")
-        empresa = info.get("longName")
+        preco = info.get("price")
+        empresa = info.get("companyName")
         setor = info.get("sector")
         valor_mercado = info.get("marketCap")
-
-        pl = info.get("priceEarningsRatio")
+        pl = info.get("p_L")
         dy = info.get("dividendYield")
-        roe = info.get("returnOnEquity")
-        roic = info.get("returnOnInvestedCapital")
-        crescimento = info.get("revenueGrowth") or info.get("earningsGrowth")
+        roe = info.get("roe")
+        roic = info.get("roic")
+        crescimento = info.get("revenueCagr5")
 
+        # Indicadores macroeconômicos fixos
         ipca = 4.2
         selic = 10.5
         pib = 2.3
         cambio = 5.10
 
+        # Pontuação
         pontos = 0
         if pl and pl < 15: pontos += 1
-        if dy and dy > 0.05: pontos += 1
-        if roe and roe > 0.12: pontos += 1
-        if roic and roic > 0.10: pontos += 1
+        if dy and dy > 5: pontos += 1
+        if roe and roe > 12: pontos += 1
+        if roic and roic > 10: pontos += 1
         if crescimento and crescimento > 0: pontos += 1
 
         if pontos >= 4:
