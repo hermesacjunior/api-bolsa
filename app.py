@@ -31,21 +31,19 @@ def analisar_acao(ticker):
         html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
-        # Limpa texto para facilitar comparação
         def limpar_texto(texto):
             texto = unicodedata.normalize('NFKD', texto)
             texto = texto.encode('ascii', 'ignore').decode('ascii')
             return texto.strip().lower()
 
         def get_valor(label):
-            label_limpo = limpar_texto(label)
-            print(f"\n🔎 Procurando: {label} ({label_limpo})")
+            alvo = limpar_texto(label)
             for tr in soup.find_all("tr"):
                 tds = tr.find_all("td")
                 if len(tds) >= 2:
                     titulo = limpar_texto(tds[0].get_text(strip=True))
                     valor = tds[1].get_text(strip=True)
-                    if label_limpo in titulo:
+                    if alvo in titulo:
                         numero = re.sub(r'[^\d,.-]', '', valor).replace('.', '').replace(',', '.')
                         try:
                             return float(numero)
@@ -53,7 +51,7 @@ def analisar_acao(ticker):
                             return None
             return None
 
-        # Indicadores
+        # Indicadores Fundamentus
         pl = get_valor("P/L")
         dy = get_valor("Div. Yield")
         roe = get_valor("ROE")
@@ -63,7 +61,7 @@ def analisar_acao(ticker):
         divida_patrimonio = get_valor("Div Br/ Patrim")
         crescimento = get_valor("Cres. Rec (5a)")
 
-        # Indicadores macro fixos
+        # Macroeconômicos fixos
         ipca = 4.2
         selic = 10.5
         pib = 2.3
