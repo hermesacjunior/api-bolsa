@@ -16,7 +16,7 @@ def analisar_acao(ticker):
     brapi_url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
 
     try:
-        # Busca dados do Brapi
+        # Requisição ao Brapi
         brapi_resp = requests.get(brapi_url)
         brapi_data = brapi_resp.json()['results'][0]
 
@@ -25,24 +25,28 @@ def analisar_acao(ticker):
         setor = brapi_data.get('sector') or 'N/A'
         valor_mercado = brapi_data.get('marketCap')
 
-        # Busca dados do Fundamentus
+        # Scraping do Fundamentus
         url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
         html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
-        # Função para buscar valores com precisão
+        # Função para capturar os dados com debug
         def get_valor(label):
+            print(f"\n🔎 Procurando: {label}")
             for tr in soup.find_all("tr"):
                 tds = tr.find_all("td")
                 if len(tds) >= 2:
-                    titulo = tds[0].get_text(strip=True).lower()
-                    if label.lower() in titulo:
-                        bruto = tds[1].get_text(strip=True)
-                        numero = re.sub(r'[^\d,.-]', '', bruto).replace('.', '').replace(',', '.')
+                    titulo = tds[0].get_text(strip=True)
+                    valor = tds[1].get_text(strip=True)
+                    print(f"Título: '{titulo}' -> Valor: '{valor}'")
+                    if label.lower() in titulo.lower():
+                        numero = re.sub(r'[^\d,.-]', '', valor).replace('.', '').replace(',', '.')
                         try:
                             return float(numero)
                         except:
+                            print(f"❌ Erro ao converter: {valor}")
                             return None
+            print(f"⚠️ Não encontrado: {label}")
             return None
 
         # Indicadores
@@ -55,13 +59,13 @@ def analisar_acao(ticker):
         divida_patrimonio = get_valor("Div Br/ Patrim")
         crescimento = get_valor("Cres. Rec (5a)")
 
-        # Dados macro fixos
+        # Indicadores macro fixos
         ipca = 4.2
         selic = 10.5
         pib = 2.3
         cambio = 5.10
 
-        # Pontuação e recomendação
+        # Pontuação
         pontos = 0
         if pl and pl < 15: pontos += 1
         if dy and dy > 5: pontos += 1
