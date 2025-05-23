@@ -31,7 +31,7 @@ def analisar_acao(ticker):
         html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
-        # Funções auxiliares
+        # Limpa texto para facilitar comparação
         def limpar_texto(texto):
             texto = unicodedata.normalize('NFKD', texto)
             texto = texto.encode('ascii', 'ignore').decode('ascii')
@@ -45,15 +45,12 @@ def analisar_acao(ticker):
                 if len(tds) >= 2:
                     titulo = limpar_texto(tds[0].get_text(strip=True))
                     valor = tds[1].get_text(strip=True)
-                    print(f"Título: '{titulo}' -> Valor: '{valor}'")
                     if label_limpo in titulo:
                         numero = re.sub(r'[^\d,.-]', '', valor).replace('.', '').replace(',', '.')
                         try:
                             return float(numero)
                         except:
-                            print(f"❌ Erro ao converter: {valor}")
                             return None
-            print(f"⚠️ Não encontrado: {label}")
             return None
 
         # Indicadores
@@ -72,7 +69,7 @@ def analisar_acao(ticker):
         pib = 2.3
         cambio = 5.10
 
-        # Lógica de pontuação
+        # Pontuação
         pontos = 0
         if pl and pl < 15: pontos += 1
         if dy and dy > 5: pontos += 1
