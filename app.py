@@ -1,9 +1,6 @@
 from flask import Flask, jsonify
 import requests
-from bs4 import BeautifulSoup
 import os
-import re
-import unicodedata
 
 app = Flask(__name__)
 
@@ -14,60 +11,25 @@ def home():
 @app.route('/analise/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
     token = os.getenv("BRAPI_TOKEN")
-    brapi_url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
+    brapi_url = f"https://brapi.dev/api/quote/{ticker}?modules=summaryProfile,financialData&token={token}"
 
     try:
-        # Dados da Brapi
-        brapi_resp = requests.get(brapi_url)
-        brapi_data = brapi_resp.json()['results'][0]
+        # Consome a API da Brapi
+        response = requests.get(brapi_url)
+        data = response.json()['results'][0]
 
-        preco = brapi_data.get('regularMarketPrice')
-        empresa = brapi_data.get('longName')
-        setor = brapi_data.get('sector') or 'N/A'
-        valor_mercado = brapi_data.get('marketCap')
+        # Indicadores disponíveis
+        preco = data.get('regularMarketPrice')
+        empresa = data.get('longName')
+        setor = data.get('sector') or 'N/A'
+        valor_mercado = data.get('marketCap')
+        pl = data.get('priceEarningsRatio')
+        dy = data.get('dividendYield')
+        roe = data.get('returnOnEquity')
+        roic = data.get('returnOnInvestedCapital')
+        crescimento = data.get('earningsGrowth') or data.get('revenueGrowth')
 
-        # Dados do Fundamentus
-        url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
-        html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
-        soup = BeautifulSoup(html, 'html.parser')
-
-        def limpar_texto(texto):
-            texto = unicodedata.normalize('NFKD', texto)
-            texto = texto.encode('ascii', 'ignore').decode('ascii')
-            return texto.strip().lower()
-
-        # Função com log detalhado
-        def get_valor(label):
-            alvo = limpar_texto(label)
-            print(f"\n🔎 Procurando: {label} (normalizado: '{alvo}')")
-            for tr in soup.find_all("tr"):
-                tds = tr.find_all("td")
-                if len(tds) >= 2:
-                    titulo_original = tds[0].get_text(strip=True)
-                    titulo_limpo = limpar_texto(titulo_original)
-                    valor = tds[1].get_text(strip=True)
-                    print(f"Título: '{titulo_original}' → '{titulo_limpo}' | Valor: '{valor}'")
-                    if alvo in titulo_limpo:
-                        numero = re.sub(r'[^\d,.-]', '', valor).replace('.', '').replace(',', '.')
-                        try:
-                            return float(numero)
-                        except:
-                            print(f"❌ Erro ao converter '{valor}'")
-                            return None
-            print(f"⚠️ Não encontrado: {label}")
-            return None
-
-        # Indicadores Fundamentus
-        pl = get_valor("P/L")
-        dy = get_valor("Div. Yield")
-        roe = get_valor("ROE")
-        roic = get_valor("ROIC")
-        ev_ebitda = get_valor("EV / EBITDA")
-        margem_liquida = get_valor("Margem Líquida")
-        divida_patrimonio = get_valor("Div Br/ Patrim")
-        crescimento = get_valor("Cres. Rec (5a)")
-
-        # Macroeconômicos fixos
+        # Indicadores macroeconômicos fixos
         ipca = 4.2
         selic = 10.5
         pib = 2.3
@@ -76,17 +38,14 @@ def analisar_acao(ticker):
         # Pontuação
         pontos = 0
         if pl and pl < 15: pontos += 1
-        if dy and dy > 5: pontos += 1
-        if roe and roe > 12: pontos += 1
-        if roic and roic > 10: pontos += 1
-        if ev_ebitda and ev_ebitda < 10: pontos += 1
-        if margem_liquida and margem_liquida > 10: pontos += 1
+        if dy and dy > 0.05: pontos += 1
+        if roe and roe > 0.12: pontos += 1
+        if roic and roic > 0.10: pontos += 1
         if crescimento and crescimento > 0: pontos += 1
-        if divida_patrimonio and divida_patrimonio < 1: pontos += 1
 
-        if pontos >= 7:
+        if pontos >= 4:
             recomendacao = "COMPRAR"
-        elif 4 <= pontos < 7:
+        elif pontos >= 2:
             recomendacao = "MANTER"
         else:
             recomendacao = "VENDER"
@@ -99,24 +58,19 @@ def analisar_acao(ticker):
             "Dividend Yield": dy,
             "ROE": roe,
             "ROIC": roic,
-            "EV/EBITDA": ev_ebitda,
-            "Margem Líquida": margem_liquida,
-            "Dívida/Patrimônio": divida_patrimonio,
-            "Crescimento de Lucro": crescimento,
+            "Crescimento de Receita": crescimento,
             "Setor": setor,
             "Valor de Mercado": valor_mercado,
             "IPCA": ipca,
             "Taxa Selic": selic,
             "PIB": pib,
             "Câmbio": cambio,
-            "Pontuacao": f"{pontos}/8",
+            "Pontuacao": f"{pontos}/5",
             "Recomendacao": recomendacao
         })
 
     except Exception as e:
-        import traceback
-        erro = traceback.format_exc()
-        return jsonify({"erro": str(e), "detalhes": erro}), 500
+        return jsonify({"erro": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
