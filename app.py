@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 import os
 import re
+import unicodedata
 
 app = Flask(__name__)
 
@@ -16,7 +17,7 @@ def analisar_acao(ticker):
     brapi_url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
 
     try:
-        # Requisição ao Brapi
+        # Dados da Brapi
         brapi_resp = requests.get(brapi_url)
         brapi_data = brapi_resp.json()['results'][0]
 
@@ -25,21 +26,27 @@ def analisar_acao(ticker):
         setor = brapi_data.get('sector') or 'N/A'
         valor_mercado = brapi_data.get('marketCap')
 
-        # Scraping do Fundamentus
+        # Dados do Fundamentus
         url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
         html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
-        # Função para capturar os dados com debug
+        # Funções auxiliares
+        def limpar_texto(texto):
+            texto = unicodedata.normalize('NFKD', texto)
+            texto = texto.encode('ascii', 'ignore').decode('ascii')
+            return texto.strip().lower()
+
         def get_valor(label):
-            print(f"\n🔎 Procurando: {label}")
+            label_limpo = limpar_texto(label)
+            print(f"\n🔎 Procurando: {label} ({label_limpo})")
             for tr in soup.find_all("tr"):
                 tds = tr.find_all("td")
                 if len(tds) >= 2:
-                    titulo = tds[0].get_text(strip=True)
+                    titulo = limpar_texto(tds[0].get_text(strip=True))
                     valor = tds[1].get_text(strip=True)
                     print(f"Título: '{titulo}' -> Valor: '{valor}'")
-                    if label.lower() in titulo.lower():
+                    if label_limpo in titulo:
                         numero = re.sub(r'[^\d,.-]', '', valor).replace('.', '').replace(',', '.')
                         try:
                             return float(numero)
@@ -65,7 +72,7 @@ def analisar_acao(ticker):
         pib = 2.3
         cambio = 5.10
 
-        # Pontuação
+        # Lógica de pontuação
         pontos = 0
         if pl and pl < 15: pontos += 1
         if dy and dy > 5: pontos += 1
