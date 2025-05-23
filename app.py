@@ -2,12 +2,13 @@ from flask import Flask, jsonify
 import requests
 from bs4 import BeautifulSoup
 import os
+import re
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return {"mensagem": "API está online!"}
+    return {"mensagem": "API de Análise de Ações está online!"}
 
 @app.route('/analise/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
@@ -15,33 +16,36 @@ def analisar_acao(ticker):
     brapi_url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
 
     try:
+        # Busca dados do Brapi
         brapi_resp = requests.get(brapi_url)
         brapi_data = brapi_resp.json()['results'][0]
 
-        pl = brapi_data.get('priceEarningsRatio')
-        dy = brapi_data.get('dividendYield')
         preco = brapi_data.get('regularMarketPrice')
         empresa = brapi_data.get('longName')
+        setor = brapi_data.get('sector') or 'N/A'
+        valor_mercado = brapi_data.get('marketCap')
 
-        # Scraping do Fundamentus
-        fundamentus_url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
-        html = requests.get(fundamentus_url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
+        # Busca dados do Fundamentus
+        url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
+        html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
+        # Função para buscar valores com precisão
         def get_valor(label):
-            for td in soup.find_all("td"):
-                texto = td.get_text(strip=True)
-                if label.lower() in texto.lower():
-                    valor_td = td.find_next_sibling("td")
-                    if valor_td:
-                        valor = valor_td.text.strip().replace('%', '').replace('.', '').replace(',', '.')
+            for tr in soup.find_all("tr"):
+                tds = tr.find_all("td")
+                if len(tds) >= 2:
+                    titulo = tds[0].get_text(strip=True).lower()
+                    if label.lower() in titulo:
+                        bruto = tds[1].get_text(strip=True)
+                        numero = re.sub(r'[^\d,.-]', '', bruto).replace('.', '').replace(',', '.')
                         try:
-                            return float(valor)
+                            return float(numero)
                         except:
                             return None
-            return None  # <- agora está corretamente DENTRO da função
+            return None
 
-        # Buscar os dados do Fundamentus
+        # Indicadores
         pl = get_valor("P/L")
         dy = get_valor("Div. Yield")
         roe = get_valor("ROE")
@@ -51,7 +55,13 @@ def analisar_acao(ticker):
         divida_patrimonio = get_valor("Div Br/ Patrim")
         crescimento = get_valor("Cres. Rec (5a)")
 
-        # Lógica de pontuação
+        # Dados macro fixos
+        ipca = 4.2
+        selic = 10.5
+        pib = 2.3
+        cambio = 5.10
+
+        # Pontuação e recomendação
         pontos = 0
         if pl and pl < 15: pontos += 1
         if dy and dy > 5: pontos += 1
@@ -81,6 +91,12 @@ def analisar_acao(ticker):
             "Margem Líquida": margem_liquida,
             "Dívida/Patrimônio": divida_patrimonio,
             "Crescimento de Lucro": crescimento,
+            "Setor": setor,
+            "Valor de Mercado": valor_mercado,
+            "IPCA": ipca,
+            "Taxa Selic": selic,
+            "PIB": pib,
+            "Câmbio": cambio,
             "Pontuacao": f"{pontos}/8",
             "Recomendacao": recomendacao
         })
