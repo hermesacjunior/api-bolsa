@@ -1,9 +1,11 @@
+from flask_cors import CORS
 from flask import Flask, jsonify
 import requests
 from bs4 import BeautifulSoup
 import os
 
 app = Flask(__name__)
+CORS(app, origins=["https://bolsabrasilinsights.lovable.app"])
 
 @app.route('/')
 def home():
