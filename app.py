@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import os
 
 app = Flask(__name__)
-CORS(app)  # Libera CORS para requisições externas
+CORS(app)
 
 @app.route('/')
 def home():
@@ -14,7 +14,6 @@ def home():
 @app.route('/analise/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
     try:
-        # 🔐 Dados da Brapi
         token = os.getenv("BRAPI_TOKEN")
         brapi_url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
         brapi_resp = requests.get(brapi_url)
@@ -26,7 +25,6 @@ def analisar_acao(ticker):
         crescimento_receita = brapi_data.get('earningsGrowth')
         valor_mercado = brapi_data.get("marketCap")
 
-        # 🌐 Scraping do Fundamentus
         url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
         html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
@@ -45,12 +43,11 @@ def analisar_acao(ticker):
                         try:
                             return float(valor_str)
                         except:
-                            print(f"⚠️ Não foi possível converter para float: {valor_str}")
+                            print(f"⚠️ Erro ao converter: {valor_str}")
                             return None
             print(f"⚠️ Não encontrado: {label}")
             return None
 
-        # 📊 Indicadores
         indicadores = {
             "ticker": ticker.upper(),
             "empresa": empresa,
@@ -62,8 +59,8 @@ def analisar_acao(ticker):
             "EV/EBITDA": buscar("EV / EBITDA"),
             "Margem Líquida": buscar("Marg. Líquida"),
             "Dívida/Patrimônio": buscar("Div Br/ Patrim"),
-            "Crescimento de Receita": crescimento_receita,
-            "Setor": buscar("Setor"),
+            "Crescimento de Receita": buscar("Cres. Rec (5a)"),
+            "Setor": buscar("?Setor"),
             "Valor de Mercado": valor_mercado,
             "IPCA": 4.2,
             "Taxa Selic": 10.5,
@@ -71,7 +68,6 @@ def analisar_acao(ticker):
             "Câmbio": 5.10,
         }
 
-        # 🧠 Lógica de Pontuação
         pontos = 0
         if pl and pl < 10: pontos += 1
         if indicadores['ROE'] and indicadores['ROE'] > 15: pontos += 1
