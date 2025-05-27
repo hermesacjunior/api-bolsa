@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import os
 
 app = Flask(__name__)
-CORS(app)  # ✅ Habilita CORS para todos os domínios
+CORS(app)  # Libera CORS para requisições externas
 
 @app.route('/')
 def home():
@@ -14,7 +14,7 @@ def home():
 @app.route('/analise/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
     try:
-        # 🔐 Token do Brapi
+        # 🔐 Dados da Brapi
         token = os.getenv("BRAPI_TOKEN")
         brapi_url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
         brapi_resp = requests.get(brapi_url)
@@ -24,20 +24,30 @@ def analisar_acao(ticker):
         empresa = brapi_data.get('longName')
         pl = brapi_data.get('priceEarnings')
         crescimento_receita = brapi_data.get('earningsGrowth')
+        valor_mercado = brapi_data.get("marketCap")
 
-        # 🌐 Scraping Fundamentus
+        # 🌐 Scraping do Fundamentus
         url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
         html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
         def buscar(label):
+            print(f"🔎 Procurando: {label}")
+            label_normalizado = label.lower().strip()
+
             for td in soup.find_all("td"):
-                if label.lower() in td.get_text(strip=True).lower():
-                    valor = td.find_next_sibling("td").text.strip().replace('%', '').replace('.', '').replace(',', '.')
-                    try:
-                        return float(valor)
-                    except:
-                        return None
+                texto_td = td.get_text(strip=True).lower().strip()
+                if label_normalizado in texto_td:
+                    valor_td = td.find_next_sibling("td")
+                    if valor_td:
+                        valor_str = valor_td.text.strip().replace('%', '').replace('.', '').replace(',', '.')
+                        print(f"Título: '{td.get_text(strip=True)}' -> Valor: '{valor_td.text.strip()}'")
+                        try:
+                            return float(valor_str)
+                        except:
+                            print(f"⚠️ Não foi possível converter para float: {valor_str}")
+                            return None
+            print(f"⚠️ Não encontrado: {label}")
             return None
 
         # 📊 Indicadores
@@ -54,14 +64,14 @@ def analisar_acao(ticker):
             "Dívida/Patrimônio": buscar("Div Br/ Patrim"),
             "Crescimento de Receita": crescimento_receita,
             "Setor": buscar("Setor"),
-            "Valor de Mercado": brapi_data.get("marketCap"),
+            "Valor de Mercado": valor_mercado,
             "IPCA": 4.2,
             "Taxa Selic": 10.5,
             "PIB": 2.3,
             "Câmbio": 5.10,
         }
 
-        # 🧠 Sistema de Pontuação
+        # 🧠 Lógica de Pontuação
         pontos = 0
         if pl and pl < 10: pontos += 1
         if indicadores['ROE'] and indicadores['ROE'] > 15: pontos += 1
@@ -90,8 +100,8 @@ def analisar_acao(ticker):
         return jsonify(indicadores)
 
     except Exception as e:
-        return jsonify({"erro": str(e)}), 500
-
+        import traceback
+        return jsonify({"erro": str(e), "trace": traceback.format_exc()}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
