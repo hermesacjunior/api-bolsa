@@ -1,5 +1,9 @@
-Flask
+flask
+flask_cors
 requests
 beautifulsoup4
 gunicorn
-flask_cors
+yfinance
+ta
+pandas
+numpy
