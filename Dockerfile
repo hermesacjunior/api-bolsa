@@ -1,18 +1,17 @@
 # Usa uma imagem oficial do Python
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Define o diretório de trabalho
+# Define diretório de trabalho
 WORKDIR /app
 
-# Copia os arquivos do projeto
-COPY . .
+# Copia os arquivos
+COPY . /app
 
 # Instala dependências
-RUN pip install --upgrade pip && \
-    pip install flask flask_cors requests beautifulsoup4 gunicorn yfinance ta pandas numpy
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Expõe a porta usada pelo Flask
+# Exponha a porta usada pelo Flask (Render usará a porta passada via env)
 EXPOSE 8080
 
-# Comando para iniciar o servidor com gunicorn
+# Comando de inicialização
 CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]
