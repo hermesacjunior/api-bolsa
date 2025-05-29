@@ -3,113 +3,69 @@ from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
 import os
+from datetime import datetime, timedelta
+import logging
 
 app = Flask(__name__)
 CORS(app)
+
+logging.basicConfig(level=logging.INFO)
+
+# Cache simples em memória (5 minutos)
+cache = {}
+TEMPO_CACHE = timedelta(minutes=5)
+
+def get_cache(key):
+    if key in cache:
+        valor, expiracao = cache[key]
+        if datetime.now() < expiracao:
+            logging.info(f"✅ Cache HIT: {key}")
+            return valor
+    return None
+
+def set_cache(key, valor):
+    cache[key] = (valor, datetime.now() + TEMPO_CACHE)
+    logging.info(f"🆕 Cache SET: {key}")
 
 @app.route('/')
 def home():
     return {"mensagem": "API Bolsa está online!"}
 
 
-@app.route('/analise/acao/<ticker>', methods=['GET'])
-def analisar_acao(ticker):
-    try:
-        token = os.getenv("BRAPI_TOKEN")
-        brapi_url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
-        brapi_resp = requests.get(brapi_url)
-        brapi_data = brapi_resp.json()['results'][0]
-
-        preco = brapi_data.get('regularMarketPrice')
-        empresa = brapi_data.get('longName')
-        pl = brapi_data.get('priceEarnings')
-        crescimento_receita = brapi_data.get('earningsGrowth')
-        valor_mercado = brapi_data.get("marketCap")
-
-        url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
-        html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
-        soup = BeautifulSoup(html, 'html.parser')
-
-        def buscar(label):
-            for td in soup.find_all("td"):
-                if label.lower() in td.text.lower():
-                    next_td = td.find_next_sibling("td")
-                    if next_td:
-                        valor = next_td.text.strip().replace('%', '').replace('.', '').replace(',', '.')
-                        try:
-                            return float(valor)
-                        except:
-                            return None
-            return None
-
-        indicadores = {
-            "ticker": ticker.upper(),
-            "empresa": empresa,
-            "preco": preco,
-            "P/L": pl,
-            "Dividend Yield": buscar("Div. Yield"),
-            "ROE": buscar("ROE"),
-            "ROIC": buscar("ROIC"),
-            "EV/EBITDA": buscar("EV / EBITDA"),
-            "Margem Líquida": buscar("Marg. Líquida"),
-            "Dívida/Patrimônio": buscar("Div Br/ Patrim"),
-            "Crescimento de Receita": buscar("Cres. Rec (5a)"),
-        }
-
-        pontos = 0
-        if pl and pl < 10: pontos += 1
-        if indicadores['ROE'] and indicadores['ROE'] > 15: pontos += 1
-        if indicadores['Dividend Yield'] and indicadores['Dividend Yield'] > 6: pontos += 1
-        if indicadores['EV/EBITDA'] and indicadores['EV/EBITDA'] < 8: pontos += 1
-        if indicadores['Margem Líquida'] and indicadores['Margem Líquida'] > 20: pontos += 1
-        if indicadores['Dívida/Patrimônio'] and indicadores['Dívida/Patrimônio'] < 1: pontos += 1
-        if indicadores['ROIC'] and indicadores['ROIC'] > 10: pontos += 1
-        if crescimento_receita:
-            if crescimento_receita > 0.10: pontos += 1
-            elif crescimento_receita > 0.03: pontos += 0.5
-
-        if pontos >= 8:
-            recomendacao = "COMPRAR"
-        elif pontos >= 5:
-            recomendacao = "MANTER"
-        else:
-            recomendacao = "VENDER"
-
-        indicadores["Pontuacao"] = f"{pontos}/8"
-        indicadores["Recomendacao"] = recomendacao
-
-        return jsonify(indicadores)
-
-    except Exception as e:
-        import traceback
-        return jsonify({"erro": str(e), "trace": traceback.format_exc()}), 500
-
-
 @app.route('/analise/fii/<ticker>', methods=['GET'])
 def analisar_fii(ticker):
+    cache_key = f"fii_{ticker.upper()}"
+    cached = get_cache(cache_key)
+    if cached:
+        return jsonify(cached)
+
     try:
         url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
         html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
-        def buscar(label):
+        def buscar(label_esperado):
             for td in soup.find_all("td"):
-                if label.lower() in td.text.lower():
-                    next_td = td.find_next_sibling("td")
-                    if next_td:
-                        valor = next_td.text.strip().replace('%', '').replace('.', '').replace(',', '.')
+                if td.get_text(strip=True) == label_esperado:
+                    td_valor = td.find_next_sibling("td")
+                    if td_valor:
+                        valor_str = td_valor.text.strip().replace('%', '').replace('.', '').replace(',', '.')
                         try:
-                            return float(valor)
+                            return float(valor_str)
                         except:
+                            logging.warning(f"⚠️ Erro ao converter valor de '{label_esperado}': {valor_str}")
                             return None
+            logging.warning(f"⚠️ Indicador não encontrado: {label_esperado}")
             return None
 
-        dy = buscar("Div. Yield")
+        # Indicadores com nomes exatos do HTML do Fundamentus
+        dy = buscar("Div. yield")
         pvp = buscar("P/VP")
-        vacancia = buscar("Vacância Média")
-        caprate = buscar("Cap Rate")
-        liquidez = buscar("Liq. Média Diária")
-        hist = buscar("Últ Rendimento")  # Pode ser nota de 1 a 5 manual, aqui simulado
+        vacancia = buscar("Vacância média")
+        caprate = buscar("Cap rate")
+        liquidez = buscar("Liq. média diária")
+        hist = buscar("Últ. rendimento")
+        preco = buscar("Cotação")
 
         pontos = 0
         if dy and dy > 7: pontos += 1
@@ -117,7 +73,7 @@ def analisar_fii(ticker):
         if vacancia and vacancia < 10: pontos += 1
         if caprate and caprate > 8: pontos += 1
         if liquidez and liquidez > 500: pontos += 1
-        if hist and hist > 0.9: pontos += 1  # Simulando histórico bom
+        if hist and hist > 0.9: pontos += 1  # Simula "bom histórico"
 
         if pontos >= 5:
             recomendacao = "COMPRAR"
@@ -126,10 +82,10 @@ def analisar_fii(ticker):
         else:
             recomendacao = "VENDER"
 
-        return jsonify({
+        resultado = {
             "ticker": ticker.upper(),
             "empresa": f"FII {ticker.upper()}",
-            "preco": buscar("Cotação"),
+            "preco": preco,
             "Dividend Yield": dy,
             "P/VP": pvp,
             "Vacância": vacancia,
@@ -138,10 +94,14 @@ def analisar_fii(ticker):
             "Histórico de Dividendos": hist,
             "Pontuacao": f"{pontos}/6",
             "Recomendacao": recomendacao
-        })
+        }
+
+        set_cache(cache_key, resultado)
+        return jsonify(resultado)
 
     except Exception as e:
         import traceback
+        logging.error(f"Erro na análise do FII {ticker}: {e}")
         return jsonify({"erro": str(e), "trace": traceback.format_exc()}), 500
 
 
