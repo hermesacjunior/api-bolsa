@@ -1,12 +1,18 @@
-# Dockerfile
+# Usa uma imagem oficial do Python
+FROM python:3.10-slim
 
-FROM python:3.11-slim
-
+# Define o diretório de trabalho
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+# Copia os arquivos do projeto
 COPY . .
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+# Instala dependências
+RUN pip install --upgrade pip && \
+    pip install flask flask_cors requests beautifulsoup4 gunicorn yfinance ta pandas numpy
+
+# Expõe a porta usada pelo Flask
+EXPOSE 8080
+
+# Comando para iniciar o servidor com gunicorn
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]
