@@ -11,7 +11,7 @@ CORS(app)
 
 logging.basicConfig(level=logging.INFO)
 
-# Cache simples em memória (5 minutos)
+# Cache simples em memória (5 min)
 cache = {}
 TEMPO_CACHE = timedelta(minutes=5)
 
@@ -27,11 +27,106 @@ def set_cache(key, valor):
     cache[key] = (valor, datetime.now() + TEMPO_CACHE)
     logging.info(f"🆕 Cache SET: {key}")
 
+# Função de scraping robusta
+def buscar(soup, label_esperado):
+    label_esperado = label_esperado.lower()
+    for td in soup.find_all("td"):
+        texto = td.get_text(strip=True).lower()
+        if label_esperado in texto:
+            td_valor = td.find_next_sibling("td")
+            if td_valor:
+                valor_str = td_valor.text.strip().replace('%', '').replace('.', '').replace(',', '.')
+                try:
+                    return float(valor_str)
+                except:
+                    logging.warning(f"⚠️ Erro ao converter '{td_valor.text.strip()}'")
+                    return None
+    logging.warning(f"❌ Indicador não encontrado: {label_esperado}")
+    return None
+
 @app.route('/')
 def home():
     return {"mensagem": "API Bolsa está online!"}
 
+# 📈 Análise de Ações
+@app.route('/analise/acao/<ticker>', methods=['GET'])
+def analisar_acao(ticker):
+    cache_key = f"acao_{ticker.upper()}"
+    cached = get_cache(cache_key)
+    if cached:
+        return jsonify(cached)
 
+    try:
+        token = os.getenv("BRAPI_TOKEN")  # opcional
+        brapi_url = f"https://brapi.dev/api/quote/{ticker.upper()}"
+        if token:
+            brapi_url += f"?token={token}"
+
+        brapi_resp = requests.get(brapi_url)
+        brapi_data = brapi_resp.json()
+        if 'results' not in brapi_data or not brapi_data['results']:
+            return jsonify({"erro": "Ticker não encontrado na Brapi."}), 404
+
+        brapi_data = brapi_data['results'][0]
+
+        preco = brapi_data.get('regularMarketPrice')
+        empresa = brapi_data.get('longName')
+        pl = brapi_data.get('priceEarnings')
+        crescimento_receita = brapi_data.get('earningsGrowth')
+        valor_mercado = brapi_data.get("marketCap")
+
+        url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
+        html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
+        soup = BeautifulSoup(html, 'html.parser')
+
+        indicadores = {
+            "ticker": ticker.upper(),
+            "empresa": empresa,
+            "preco": preco,
+            "P/L": pl,
+            "Dividend Yield": buscar(soup, "Div. yield"),
+            "ROE": buscar(soup, "ROE"),
+            "ROIC": buscar(soup, "ROIC"),
+            "EV/EBITDA": buscar(soup, "EV / EBITDA"),
+            "Margem Líquida": buscar(soup, "Marg. líquida"),
+            "Dívida/Patrimônio": buscar(soup, "Div br/ patrim"),
+            "Crescimento de Receita": buscar(soup, "Cres. rec (5a)"),
+            "Valor de Mercado": valor_mercado
+        }
+
+        pontos = 0
+        if pl and pl < 10: pontos += 1
+        if indicadores['ROE'] and indicadores['ROE'] > 15: pontos += 1
+        if indicadores['Dividend Yield'] and indicadores['Dividend Yield'] > 6: pontos += 1
+        if indicadores['EV/EBITDA'] and indicadores['EV/EBITDA'] < 8: pontos += 1
+        if indicadores['Margem Líquida'] and indicadores['Margem Líquida'] > 20: pontos += 1
+        if indicadores['Dívida/Patrimônio'] and indicadores['Dívida/Patrimônio'] < 1: pontos += 1
+        if indicadores['ROIC'] and indicadores['ROIC'] > 10: pontos += 1
+        if crescimento_receita:
+            if crescimento_receita > 0.10:
+                pontos += 1
+            elif crescimento_receita > 0.03:
+                pontos += 0.5
+
+        if pontos >= 8:
+            recomendacao = "COMPRAR"
+        elif pontos >= 5:
+            recomendacao = "MANTER"
+        else:
+            recomendacao = "VENDER"
+
+        indicadores["Pontuacao"] = f"{pontos}/8"
+        indicadores["Recomendacao"] = recomendacao
+
+        set_cache(cache_key, indicadores)
+        return jsonify(indicadores)
+
+    except Exception as e:
+        import traceback
+        logging.error(f"Erro na análise da ação {ticker}: {e}")
+        return jsonify({"erro": str(e), "trace": traceback.format_exc()}), 500
+
+# 🏢 Análise de FIIs
 @app.route('/analise/fii/<ticker>', methods=['GET'])
 def analisar_fii(ticker):
     cache_key = f"fii_{ticker.upper()}"
@@ -44,30 +139,13 @@ def analisar_fii(ticker):
         html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
         soup = BeautifulSoup(html, 'html.parser')
 
-        def buscar(label_esperado):
-            label_esperado = label_esperado.lower()
-            for td in soup.find_all("td"):
-                texto = td.get_text(strip=True).lower()
-                if label_esperado in texto:
-                    td_valor = td.find_next_sibling("td")
-                    if td_valor:
-                        valor_str = td_valor.text.strip().replace('%', '').replace('.', '').replace(',', '.')
-                        try:
-                            return float(valor_str)
-                        except:
-                            logging.warning(f"⚠️ Erro ao converter '{td_valor.text.strip()}'")
-                            return None
-            logging.warning(f"❌ Indicador não encontrado: {label_esperado}")
-            return None
-
-        # Labels ajustados para garantir leitura
-        preco = buscar("Cotação")
-        dy = buscar("Div. yield")
-        pvp = buscar("P/VP")
-        caprate = buscar("Cap rate")
-        vacancia = buscar("Vacância média")
-        liquidez = buscar("Vol $ méd")
-        hist = buscar("Dividendo/cota")
+        preco = buscar(soup, "Cotação")
+        dy = buscar(soup, "Div. yield")
+        pvp = buscar(soup, "P/VP")
+        caprate = buscar(soup, "Cap rate")
+        vacancia = buscar(soup, "Vacância média")
+        liquidez = buscar(soup, "Vol $ méd")
+        hist = buscar(soup, "Dividendo/cota")
 
         pontos = 0
         if dy and dy > 7: pontos += 1
