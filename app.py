@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
@@ -43,15 +43,35 @@ def buscar(soup, label_esperado):
     logging.warning(f"❌ Indicador não encontrado: {label_esperado}")
     return None
 
+def ajustar_por_perfil(recomendacao, pontos, perfil):
+    if perfil == "conservador":
+        if pontos >= 7.5:
+            return "COMPRAR"
+        elif pontos >= 5:
+            return "MANTER"
+        else:
+            return "VENDER"
+    elif perfil == "moderado":
+        return recomendacao
+    elif perfil == "agressivo":
+        if pontos >= 6:
+            return "COMPRAR"
+        elif pontos >= 3.5:
+            return "MANTER"
+        else:
+            return "VENDER"
+    return recomendacao
+
 @app.route('/')
 def home():
     return {"mensagem": "API Bolsa está online!"}
 
-# ✅ Proteção: se terminar com 11, bloqueia como ação
 @app.route('/analise/acao/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
     if ticker.upper().endswith("11"):
         return jsonify({"erro": "Este código termina com '11' e provavelmente é um Fundo Imobiliário. Use /analise/fii/."}), 400
+
+    perfil = request.args.get("perfil", "moderado")
 
     cache_key = f"acao_{ticker.upper()}"
     cached = get_cache(cache_key)
@@ -97,30 +117,58 @@ def analisar_acao(ticker):
         }
 
         pontos = 0
-        if pl and pl < 10: pontos += 1.5
-        if indicadores['ROE'] and indicadores['ROE'] > 15: pontos += 1
-        if indicadores['Dividend Yield'] and indicadores['Dividend Yield'] > 6: pontos += 1
-        if indicadores['EV/EBITDA'] and indicadores['EV/EBITDA'] < 8: pontos += 1
-        if indicadores['Margem Líquida'] and indicadores['Margem Líquida'] > 20: pontos += 1
-        if indicadores['Dívida/Patrimônio'] and indicadores['Dívida/Patrimônio'] < 1: pontos += 1
-        if indicadores['ROIC'] and indicadores['ROIC'] > 10: pontos += 1
+        explicacoes = []
+
+        if pl and 5 <= pl <= 15:
+            pontos += 1.5
+            explicacoes.append("✅ P/L ideal entre 5 e 15")
+        else:
+            explicacoes.append("⚠️ P/L fora da faixa ideal")
+
+        if indicadores['ROE'] and indicadores['ROE'] > 10:
+            pontos += 1
+            explicacoes.append("✅ ROE acima de 10%")
+
+        if indicadores['Dividend Yield'] and indicadores['Dividend Yield'] > 4:
+            pontos += 1
+            explicacoes.append("✅ Dividend Yield acima de 4%")
+
+        if indicadores['EV/EBITDA'] and 0 < indicadores['EV/EBITDA'] < 8:
+            pontos += 1
+            explicacoes.append("✅ EV/EBITDA saudável")
+
+        if indicadores['Margem Líquida'] and indicadores['Margem Líquida'] > 10:
+            pontos += 1
+            explicacoes.append("✅ Margem Líquida maior que 10%")
+
+        if indicadores['Dívida/Patrimônio'] is not None and 0 <= indicadores['Dívida/Patrimônio'] < 1:
+            pontos += 1
+            explicacoes.append("✅ Dívida/Patrimônio saudável")
+
+        if indicadores['ROIC'] and indicadores['ROIC'] > 8:
+            pontos += 1
+            explicacoes.append("✅ ROIC acima de 8%")
+
         if crescimento_receita:
-            if crescimento_receita > 0.10:
+            if crescimento_receita > 0.05:
                 pontos += 0.5
-            elif crescimento_receita > 0.03:
-                pontos += 0.25
+                explicacoes.append("✅ Crescimento de receita acima de 5%")
 
         if pl and pl > 60:
             recomendacao = "VENDER"
         elif pontos >= 7:
             recomendacao = "COMPRAR"
-        elif pontos >= 4.5:
+        elif pontos >= 4:
             recomendacao = "MANTER"
         else:
             recomendacao = "VENDER"
 
+        recomendacao = ajustar_por_perfil(recomendacao, pontos, perfil)
+
         indicadores["Pontuacao"] = f"{round(pontos, 2)}/8"
         indicadores["Recomendacao"] = recomendacao
+        indicadores["Explicacao"] = explicacoes
+        indicadores["Perfil"] = perfil
 
         set_cache(cache_key, indicadores)
         return jsonify(indicadores)
@@ -130,11 +178,12 @@ def analisar_acao(ticker):
         logging.error(f"Erro na análise da ação {ticker}: {e}")
         return jsonify({"erro": str(e), "trace": traceback.format_exc()}), 500
 
-# ✅ Proteção: se NÃO terminar com 11, bloqueia como FII
 @app.route('/analise/fii/<ticker>', methods=['GET'])
 def analisar_fii(ticker):
     if not ticker.upper().endswith("11"):
         return jsonify({"erro": "Este código não termina com '11'. Provavelmente é uma ação. Use /analise/acao/."}), 400
+
+    perfil = request.args.get("perfil", "moderado")
 
     cache_key = f"fii_{ticker.upper()}"
     cached = get_cache(cache_key)
@@ -155,18 +204,33 @@ def analisar_fii(ticker):
         hist = buscar(soup, "Dividendo/cota")
 
         pontos = 0
-        if dy and dy > 7: pontos += 1.5
-        if pvp and pvp < 1.05: pontos += 1
-        if caprate and caprate > 8: pontos += 1
-        if vacancia is not None and vacancia < 10: pontos += 1
-        if liquidez and liquidez > 500: pontos += 0.75
-        if hist and hist > 0.9: pontos += 0.75
+        explicacoes = []
 
-        if dy and dy < 5:
-            recomendacao = "VENDER"
-        elif vacancia and vacancia > 25:
-            recomendacao = "VENDER"
-        elif caprate == 0:
+        if dy and dy > 7:
+            pontos += 1.5
+            explicacoes.append("✅ Dividend Yield acima de 7%")
+
+        if pvp and pvp < 1.05:
+            pontos += 1
+            explicacoes.append("✅ P/VP abaixo de 1.05")
+
+        if caprate and caprate > 8:
+            pontos += 1
+            explicacoes.append("✅ Cap Rate acima de 8%")
+
+        if vacancia is not None and vacancia < 10:
+            pontos += 1
+            explicacoes.append("✅ Vacância abaixo de 10%")
+
+        if liquidez and liquidez > 500:
+            pontos += 0.75
+            explicacoes.append("✅ Boa liquidez média diária")
+
+        if hist and hist > 0.9:
+            pontos += 0.75
+            explicacoes.append("✅ Histórico de dividendos consistente")
+
+        if dy and dy < 5 or (vacancia and vacancia > 25) or caprate == 0:
             recomendacao = "VENDER"
         elif pontos >= 5:
             recomendacao = "COMPRAR"
@@ -174,6 +238,8 @@ def analisar_fii(ticker):
             recomendacao = "MANTER"
         else:
             recomendacao = "VENDER"
+
+        recomendacao = ajustar_por_perfil(recomendacao, pontos, perfil)
 
         resultado = {
             "ticker": ticker.upper(),
@@ -186,7 +252,9 @@ def analisar_fii(ticker):
             "Liquidez Média": liquidez,
             "Histórico de Dividendos": hist,
             "Pontuacao": f"{round(pontos, 2)}/6",
-            "Recomendacao": recomendacao
+            "Recomendacao": recomendacao,
+            "Explicacao": explicacoes,
+            "Perfil": perfil
         }
 
         set_cache(cache_key, resultado)
