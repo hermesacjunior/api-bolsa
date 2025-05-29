@@ -11,7 +11,7 @@ CORS(app)
 
 logging.basicConfig(level=logging.INFO)
 
-# Cache simples em memória
+# Cache simples
 cache = {}
 TEMPO_CACHE = timedelta(minutes=5)
 
@@ -27,7 +27,6 @@ def set_cache(key, valor):
     cache[key] = (valor, datetime.now() + TEMPO_CACHE)
     logging.info(f"🆕 Cache SET: {key}")
 
-# Função de busca robusta no HTML
 def buscar(soup, label_esperado):
     label_esperado = label_esperado.lower()
     for td in soup.find_all("td"):
@@ -48,9 +47,12 @@ def buscar(soup, label_esperado):
 def home():
     return {"mensagem": "API Bolsa está online!"}
 
-# 📈 Análise de Ações com pesos e filtro crítico
+# ✅ Proteção: se terminar com 11, bloqueia como ação
 @app.route('/analise/acao/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
+    if ticker.upper().endswith("11"):
+        return jsonify({"erro": "Este código termina com '11' e provavelmente é um Fundo Imobiliário. Use /analise/fii/."}), 400
+
     cache_key = f"acao_{ticker.upper()}"
     cached = get_cache(cache_key)
     if cached:
@@ -108,7 +110,6 @@ def analisar_acao(ticker):
             elif crescimento_receita > 0.03:
                 pontos += 0.25
 
-        # Filtro crítico
         if pl and pl > 60:
             recomendacao = "VENDER"
         elif pontos >= 7:
@@ -129,9 +130,12 @@ def analisar_acao(ticker):
         logging.error(f"Erro na análise da ação {ticker}: {e}")
         return jsonify({"erro": str(e), "trace": traceback.format_exc()}), 500
 
-# 🏢 Análise de FIIs com pesos e filtro crítico
+# ✅ Proteção: se NÃO terminar com 11, bloqueia como FII
 @app.route('/analise/fii/<ticker>', methods=['GET'])
 def analisar_fii(ticker):
+    if not ticker.upper().endswith("11"):
+        return jsonify({"erro": "Este código não termina com '11'. Provavelmente é uma ação. Use /analise/acao/."}), 400
+
     cache_key = f"fii_{ticker.upper()}"
     cached = get_cache(cache_key)
     if cached:
@@ -158,7 +162,6 @@ def analisar_fii(ticker):
         if liquidez and liquidez > 500: pontos += 0.75
         if hist and hist > 0.9: pontos += 0.75
 
-        # Filtro crítico
         if dy and dy < 5:
             recomendacao = "VENDER"
         elif vacancia and vacancia > 25:
