@@ -45,35 +45,37 @@ def analisar_fii(ticker):
         soup = BeautifulSoup(html, 'html.parser')
 
         def buscar(label_esperado):
+            label_esperado = label_esperado.lower()
             for td in soup.find_all("td"):
-                if td.get_text(strip=True) == label_esperado:
+                texto = td.get_text(strip=True).lower()
+                if label_esperado in texto:
                     td_valor = td.find_next_sibling("td")
                     if td_valor:
                         valor_str = td_valor.text.strip().replace('%', '').replace('.', '').replace(',', '.')
                         try:
                             return float(valor_str)
                         except:
-                            logging.warning(f"⚠️ Erro ao converter valor de '{label_esperado}': {valor_str}")
+                            logging.warning(f"⚠️ Erro ao converter '{td_valor.text.strip()}'")
                             return None
-            logging.warning(f"⚠️ Indicador não encontrado: {label_esperado}")
+            logging.warning(f"❌ Indicador não encontrado: {label_esperado}")
             return None
 
-        # Indicadores com nomes exatos do HTML do Fundamentus
+        # Labels ajustados para garantir leitura
+        preco = buscar("Cotação")
         dy = buscar("Div. yield")
         pvp = buscar("P/VP")
-        vacancia = buscar("Vacância média")
         caprate = buscar("Cap rate")
-        liquidez = buscar("Liq. média diária")
-        hist = buscar("Últ. rendimento")
-        preco = buscar("Cotação")
+        vacancia = buscar("Vacância média")
+        liquidez = buscar("Vol $ méd")
+        hist = buscar("Dividendo/cota")
 
         pontos = 0
         if dy and dy > 7: pontos += 1
         if pvp and pvp < 1.05: pontos += 1
-        if vacancia and vacancia < 10: pontos += 1
         if caprate and caprate > 8: pontos += 1
+        if vacancia is not None and vacancia < 10: pontos += 1
         if liquidez and liquidez > 500: pontos += 1
-        if hist and hist > 0.9: pontos += 1  # Simula "bom histórico"
+        if hist and hist > 0.9: pontos += 1
 
         if pontos >= 5:
             recomendacao = "COMPRAR"
