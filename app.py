@@ -11,7 +11,8 @@ CORS(app)
 def home():
     return {"mensagem": "API Bolsa está online!"}
 
-@app.route('/analise/<ticker>', methods=['GET'])
+
+@app.route('/analise/acao/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
     try:
         token = os.getenv("BRAPI_TOKEN")
@@ -30,22 +31,15 @@ def analisar_acao(ticker):
         soup = BeautifulSoup(html, 'html.parser')
 
         def buscar(label):
-            print(f"🔎 Procurando: {label}")
-            label_normalizado = label.lower().strip()
-
             for td in soup.find_all("td"):
-                texto_td = td.get_text(strip=True).lower().strip()
-                if label_normalizado in texto_td:
-                    valor_td = td.find_next_sibling("td")
-                    if valor_td:
-                        valor_str = valor_td.text.strip().replace('%', '').replace('.', '').replace(',', '.')
-                        print(f"Título: '{td.get_text(strip=True)}' -> Valor: '{valor_td.text.strip()}'")
+                if label.lower() in td.text.lower():
+                    next_td = td.find_next_sibling("td")
+                    if next_td:
+                        valor = next_td.text.strip().replace('%', '').replace('.', '').replace(',', '.')
                         try:
-                            return float(valor_str)
+                            return float(valor)
                         except:
-                            print(f"⚠️ Erro ao converter: {valor_str}")
                             return None
-            print(f"⚠️ Não encontrado: {label}")
             return None
 
         indicadores = {
@@ -60,12 +54,6 @@ def analisar_acao(ticker):
             "Margem Líquida": buscar("Marg. Líquida"),
             "Dívida/Patrimônio": buscar("Div Br/ Patrim"),
             "Crescimento de Receita": buscar("Cres. Rec (5a)"),
-            "Setor": buscar("?Setor"),
-            "Valor de Mercado": valor_mercado,
-            "IPCA": 4.2,
-            "Taxa Selic": 10.5,
-            "PIB": 2.3,
-            "Câmbio": 5.10,
         }
 
         pontos = 0
@@ -76,12 +64,9 @@ def analisar_acao(ticker):
         if indicadores['Margem Líquida'] and indicadores['Margem Líquida'] > 20: pontos += 1
         if indicadores['Dívida/Patrimônio'] and indicadores['Dívida/Patrimônio'] < 1: pontos += 1
         if indicadores['ROIC'] and indicadores['ROIC'] > 10: pontos += 1
-        if indicadores['Crescimento de Receita']:
-            crescimento = indicadores['Crescimento de Receita']
-            if crescimento > 10:
-                pontos += 1
-            elif crescimento > 3:
-                pontos += 0.5
+        if crescimento_receita:
+            if crescimento_receita > 0.10: pontos += 1
+            elif crescimento_receita > 0.03: pontos += 0.5
 
         if pontos >= 8:
             recomendacao = "COMPRAR"
@@ -98,6 +83,67 @@ def analisar_acao(ticker):
     except Exception as e:
         import traceback
         return jsonify({"erro": str(e), "trace": traceback.format_exc()}), 500
+
+
+@app.route('/analise/fii/<ticker>', methods=['GET'])
+def analisar_fii(ticker):
+    try:
+        url = f"https://www.fundamentus.com.br/detalhes.php?papel={ticker.upper()}"
+        html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).content.decode("ISO-8859-1")
+        soup = BeautifulSoup(html, 'html.parser')
+
+        def buscar(label):
+            for td in soup.find_all("td"):
+                if label.lower() in td.text.lower():
+                    next_td = td.find_next_sibling("td")
+                    if next_td:
+                        valor = next_td.text.strip().replace('%', '').replace('.', '').replace(',', '.')
+                        try:
+                            return float(valor)
+                        except:
+                            return None
+            return None
+
+        dy = buscar("Div. Yield")
+        pvp = buscar("P/VP")
+        vacancia = buscar("Vacância Média")
+        caprate = buscar("Cap Rate")
+        liquidez = buscar("Liq. Média Diária")
+        hist = buscar("Últ Rendimento")  # Pode ser nota de 1 a 5 manual, aqui simulado
+
+        pontos = 0
+        if dy and dy > 7: pontos += 1
+        if pvp and pvp < 1.05: pontos += 1
+        if vacancia and vacancia < 10: pontos += 1
+        if caprate and caprate > 8: pontos += 1
+        if liquidez and liquidez > 500: pontos += 1
+        if hist and hist > 0.9: pontos += 1  # Simulando histórico bom
+
+        if pontos >= 5:
+            recomendacao = "COMPRAR"
+        elif pontos >= 3:
+            recomendacao = "MANTER"
+        else:
+            recomendacao = "VENDER"
+
+        return jsonify({
+            "ticker": ticker.upper(),
+            "empresa": f"FII {ticker.upper()}",
+            "preco": buscar("Cotação"),
+            "Dividend Yield": dy,
+            "P/VP": pvp,
+            "Vacância": vacancia,
+            "Cap Rate": caprate,
+            "Liquidez Média": liquidez,
+            "Histórico de Dividendos": hist,
+            "Pontuacao": f"{pontos}/6",
+            "Recomendacao": recomendacao
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({"erro": str(e), "trace": traceback.format_exc()}), 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
