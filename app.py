@@ -11,7 +11,7 @@ CORS(app)
 
 logging.basicConfig(level=logging.INFO)
 
-# Cache simples em memória (5 min)
+# Cache simples em memória
 cache = {}
 TEMPO_CACHE = timedelta(minutes=5)
 
@@ -27,7 +27,7 @@ def set_cache(key, valor):
     cache[key] = (valor, datetime.now() + TEMPO_CACHE)
     logging.info(f"🆕 Cache SET: {key}")
 
-# Função de scraping robusta
+# Função de busca robusta no HTML
 def buscar(soup, label_esperado):
     label_esperado = label_esperado.lower()
     for td in soup.find_all("td"):
@@ -48,7 +48,7 @@ def buscar(soup, label_esperado):
 def home():
     return {"mensagem": "API Bolsa está online!"}
 
-# 📈 Análise de Ações
+# 📈 Análise de Ações com pesos e filtro crítico
 @app.route('/analise/acao/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
     cache_key = f"acao_{ticker.upper()}"
@@ -57,7 +57,7 @@ def analisar_acao(ticker):
         return jsonify(cached)
 
     try:
-        token = os.getenv("BRAPI_TOKEN")  # opcional
+        token = os.getenv("BRAPI_TOKEN")
         brapi_url = f"https://brapi.dev/api/quote/{ticker.upper()}"
         if token:
             brapi_url += f"?token={token}"
@@ -95,7 +95,7 @@ def analisar_acao(ticker):
         }
 
         pontos = 0
-        if pl and pl < 10: pontos += 1
+        if pl and pl < 10: pontos += 1.5
         if indicadores['ROE'] and indicadores['ROE'] > 15: pontos += 1
         if indicadores['Dividend Yield'] and indicadores['Dividend Yield'] > 6: pontos += 1
         if indicadores['EV/EBITDA'] and indicadores['EV/EBITDA'] < 8: pontos += 1
@@ -104,18 +104,21 @@ def analisar_acao(ticker):
         if indicadores['ROIC'] and indicadores['ROIC'] > 10: pontos += 1
         if crescimento_receita:
             if crescimento_receita > 0.10:
-                pontos += 1
-            elif crescimento_receita > 0.03:
                 pontos += 0.5
+            elif crescimento_receita > 0.03:
+                pontos += 0.25
 
-        if pontos >= 8:
+        # Filtro crítico
+        if pl and pl > 60:
+            recomendacao = "VENDER"
+        elif pontos >= 7:
             recomendacao = "COMPRAR"
-        elif pontos >= 5:
+        elif pontos >= 4.5:
             recomendacao = "MANTER"
         else:
             recomendacao = "VENDER"
 
-        indicadores["Pontuacao"] = f"{pontos}/8"
+        indicadores["Pontuacao"] = f"{round(pontos, 2)}/8"
         indicadores["Recomendacao"] = recomendacao
 
         set_cache(cache_key, indicadores)
@@ -126,7 +129,7 @@ def analisar_acao(ticker):
         logging.error(f"Erro na análise da ação {ticker}: {e}")
         return jsonify({"erro": str(e), "trace": traceback.format_exc()}), 500
 
-# 🏢 Análise de FIIs
+# 🏢 Análise de FIIs com pesos e filtro crítico
 @app.route('/analise/fii/<ticker>', methods=['GET'])
 def analisar_fii(ticker):
     cache_key = f"fii_{ticker.upper()}"
@@ -148,16 +151,23 @@ def analisar_fii(ticker):
         hist = buscar(soup, "Dividendo/cota")
 
         pontos = 0
-        if dy and dy > 7: pontos += 1
+        if dy and dy > 7: pontos += 1.5
         if pvp and pvp < 1.05: pontos += 1
         if caprate and caprate > 8: pontos += 1
         if vacancia is not None and vacancia < 10: pontos += 1
-        if liquidez and liquidez > 500: pontos += 1
-        if hist and hist > 0.9: pontos += 1
+        if liquidez and liquidez > 500: pontos += 0.75
+        if hist and hist > 0.9: pontos += 0.75
 
-        if pontos >= 5:
+        # Filtro crítico
+        if dy and dy < 5:
+            recomendacao = "VENDER"
+        elif vacancia and vacancia > 25:
+            recomendacao = "VENDER"
+        elif caprate == 0:
+            recomendacao = "VENDER"
+        elif pontos >= 5:
             recomendacao = "COMPRAR"
-        elif pontos >= 3:
+        elif pontos >= 3.5:
             recomendacao = "MANTER"
         else:
             recomendacao = "VENDER"
@@ -172,7 +182,7 @@ def analisar_fii(ticker):
             "Cap Rate": caprate,
             "Liquidez Média": liquidez,
             "Histórico de Dividendos": hist,
-            "Pontuacao": f"{pontos}/6",
+            "Pontuacao": f"{round(pontos, 2)}/6",
             "Recomendacao": recomendacao
         }
 
@@ -183,7 +193,6 @@ def analisar_fii(ticker):
         import traceback
         logging.error(f"Erro na análise do FII {ticker}: {e}")
         return jsonify({"erro": str(e), "trace": traceback.format_exc()}), 500
-
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
