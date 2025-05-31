@@ -66,13 +66,19 @@ def ajustar_por_perfil(recomendacao, pontos, perfil):
 def home():
     return {"mensagem": "API Bolsa está online!"}
 
+@app.route('/analise/<ticker>', methods=['GET'])
+def analise_redirect(ticker):
+    if ticker.upper().endswith("11"):
+        return analisar_fii(ticker)
+    else:
+        return analisar_acao(ticker)
+
 @app.route('/analise/acao/<ticker>', methods=['GET'])
 def analisar_acao(ticker):
     if ticker.upper().endswith("11"):
         return jsonify({"erro": "Este código termina com '11' e provavelmente é um Fundo Imobiliário. Use /analise/fii/."}), 400
 
     perfil = request.args.get("perfil", "moderado")
-
     cache_key = f"acao_{ticker.upper()}"
     cached = get_cache(cache_key)
     if cached:
@@ -184,7 +190,6 @@ def analisar_fii(ticker):
         return jsonify({"erro": "Este código não termina com '11'. Provavelmente é uma ação. Use /analise/acao/."}), 400
 
     perfil = request.args.get("perfil", "moderado")
-
     cache_key = f"fii_{ticker.upper()}"
     cached = get_cache(cache_key)
     if cached:
